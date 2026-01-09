@@ -85,7 +85,7 @@ if user_input := st.chat_input("명령을 입력하세요 (예: 환자 상태 �
             try:
                 # 모델 생성 및 채팅 연결 (히스토리 유지)
                 model = genai.GenerativeModel(
-                    model_name="gemini-1.5-pro",
+                    model_name="gemini-3.0-pro",
                     system_instruction=SYSTEM_PROMPT
                 )
                 chat = model.start_chat(history=st.session_state.history)
@@ -115,4 +115,5 @@ with st.sidebar:
         st.rerun()
     
     st.markdown("---")
+
     st.info("**[가이드]**\n\n1. `시작` 입력하여 시나리오 로딩\n2. V/S 확인 및 처치 명령\n3. 오염 계측 명령")
