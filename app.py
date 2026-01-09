@@ -39,7 +39,7 @@ SYSTEM_PROMPT = """
 def get_ai_response(messages):
     # 시스템 프롬프트를 설정에 포함시켜 모델을 불러옵니다.
     model = genai.GenerativeModel(
-        model_name="gemini-1.5-pro", # 또는 gemini-1.5-flash
+        model_name="gemini-3.0-pro", # 또는 gemini-3.0-flash
         system_instruction=SYSTEM_PROMPT
     )
     
