@@ -66,7 +66,7 @@ def generate_image(prompt):
     """Imagen 모델을 사용하여 이미지를 생성합니다."""
     try:
         # 텍스트 모델은 Flash-lite를 쓰더라도, 그림은 화가(Imagen)가 그려야 합니다.
-        imagen_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
+        imagen_model = genai.ImageGenerationModel("imagen-4.0-generate-001")
         result = imagen_model.generate_images(
             prompt=prompt, number_of_images=1, aspect_ratio="16:9", safety_filter_level="block_some"
         )
@@ -223,3 +223,4 @@ if st.session_state.evaluation:
     df = pd.DataFrame(data)
     csv = df.to_csv(index=False).encode('utf-8-sig')
     st.download_button("📥 결과 다운로드 (CSV)", data=csv, file_name="result.csv", mime="text/csv")
+
