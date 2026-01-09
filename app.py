@@ -167,7 +167,7 @@ if st.session_state.evaluation is None:
                 try:
                     # 텍스트 모델: 1.5-flash (안정성 및 속도 최우선)
                     chat_model = genai.GenerativeModel(
-                        model_name="gemini-1.5-flash", 
+                        model_name="gemini-3-flash-preview", 
                         system_instruction=SYSTEM_PROMPT
                     )
                     
@@ -237,7 +237,7 @@ if st.session_state.evaluation is None:
             else:
                 with st.spinner("AI가 훈련 내용을 분석하여 채점 중입니다..."):
                     try:
-                        eval_model = genai.GenerativeModel("gemini-1.5-flash")
+                        eval_model = genai.GenerativeModel("gemini-3-flash-preview")
                         
                         full_log = "\n".join([
                             f"{msg.role}: {msg.parts[0].text}" 
