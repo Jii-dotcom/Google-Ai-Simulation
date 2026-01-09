@@ -2,11 +2,11 @@ import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 from datetime import datetime
-import re  # 태그 감지용
-from PIL import Image  # 이미지 처리용
+import re
+from PIL import Image
 
 # ==========================================
-# 1. 기본 설정 및 API 키 확인
+# 1. API 키 설정
 # ==========================================
 if "GOOGLE_API_KEY" in st.secrets:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
@@ -17,11 +17,11 @@ else:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # ==========================================
-# 2. 시스템 프롬프트 (V2.6 + 이미지 생성 기능 통합)
+# 2. 시스템 프롬프트 (V2.6 + 이미지 생성 기능)
 # ==========================================
 SYSTEM_PROMPT = """
 **[System Settings: Gemini 3.0 Pro Medical Simulator]**
-너는 첨부된 **엑셀 파일(환자 DB)**과 **매뉴얼(PDF)**, 그리고 아래 정의된 **환자 프로필**을 완벽하게 숙지하고 있는 의료 시뮬레이션 엔진이다.
+너는 첨부된 **엑셀 파일(환자 DB)**과 **매뉴얼(PDF)**, 그리고 아래 정의된 **환자 프로필**을 완벽하게 숙지한 의료 시뮬레이션 엔진이다.
 
 **[Role Definition: 절대 원칙]**
 1. **NO Game Master:** 너는 진행자가 아니다. 상황 설명, 조언, 힌트, "다음 단계는~" 같은 말을 절대 하지 마라.
@@ -49,40 +49,25 @@ SYSTEM_PROMPT = """
 - **V/S:** BP 130/90, HR 110 (빈맥), SpO2 98%.
 - **특징:** 다리 골절 및 오염. 계속 비명을 질러 의료진의 판단을 방해함.
 
-**[Simulation Logic: 생사 판정 및 상호작용 (Modified)]**
-1. **치명적 실수 유예 (Progressive Death Trigger):**
+**[Simulation Logic: 생사 판정 및 상호작용]**
+1. **치명적 실수 유예:**
    - 환자(한가을)의 Vital이 불안정한데 소생술(ABC) 없이 '제염/탈의'를 먼저 시도할 경우:
-     - **1차 시도 (Warning):** 즉시 사망시키지 말고, **상태를 급격히 악화**시켜라.
-       - 반응: "환자가 컥컥거리며 몸을 뒤틉니다! 움직임 때문에 혈압이 뚝 떨어집니다!"
-       - 출력: `[한가을 Monitor] ⚠ BP 60/40 (▼) | HR 20 (Critical) | SpO2 70%`
-     - **2~3차 시도/지연 (Death):** 경고 후에도 계속 제염을 하거나 ABC 처치를 안 하고 1~2턴을 더 보내면?
-       - 반응: "모니터의 파형이 평평해집니다."
-       - 출력: `[한가을 Monitor] Asystole (심정지) | 삐---------` -> **(사망 선고)**
+     - **1차 시도 (Warning):** "환자가 컥컥거리며 몸을 뒤틉니다! 움직임 때문에 혈압이 뚝 떨어집니다!"
+     - 출력: `[한가을 Monitor] ⚠ BP 60/40 (▼) | HR 20 (Critical) | SpO2 70%`
+     - **2~3차 시도/지연 (Death):** "모니터의 파형이 평평해집니다."
+     - 출력: `[한가을 Monitor] Asystole (심정지) | 삐---------` -> **(사망 선고)**
 
-2. **방치 패널티 (Neglect Penalty & Distraction):**
-   - 사용자가 **'최여름(시끄러운 환자)'**에게 정신이 팔려 **3턴 이상** 시간을 보내면, **'한가을'**은 조용히 사망(Asystole)한다.
-   - 사용자가 **'한가을'**을 진료하는 동안, **'최여름'**은 "나부터 살려줘! 아악!"하며 텍스트로 방해한다.
-
-3. **적절한 처치 (Survival):**
-   - 위급 환자에게 산소, 수액, 아트로핀 등을 우선 투여하면 V/S 수치를 소폭 상승시켜라. (예: HR 30 -> 45)
-
-[Simulation Logic Extension: 제염 프로토콜 (Step-by-Step)]
-사용자가 단순히 "제염 실시"라고만 입력하면, 즉시 완료 처리하지 말고 구체적인 행동을 요구하는 현장 반응을 보여라. 제염은 반드시 단계별로 진행되어야 오염 수치(CPS)가 감소한다.
-1. 단계별 행동 정의:
-    * 행동 1: 환자 탈의 (의복 제거) -> CPS 50% 감소.
-    * 행동 2: 국소 세척/닦아내기 -> CPS 20% 추가 감소.
-    * 행동 3: 전신 샤워 -> "제염실 없음" 경고 출력.
-2. 실패 시나리오: 단계 없이 씻기라고 하면 오염 확산 경고 출력.
+2. **방치 패널티:**
+   - **'최여름'**에게 정신이 팔려 **3턴 이상** 시간을 보내면, **'한가을'**은 조용히 사망한다.
 
 **[Visual Output Protocol: AI 이미지 생성 요청]**
 너는 텍스트 출력 마지막 줄에 상황에 맞는 **이미지 생성 프롬프트**를 `<<<IMAGE_PROMPT: (영어 묘사)>>>` 형식으로 작성해야 한다.
 단, 매번 출력하지 말고 **시나리오 시작, 환자 상태의 급격한 변화(사망, 위독), 시각적으로 중요한 처치(오염 제거 등)**가 있을 때만 출력하라.
 
 * 예시 1 (오프닝): `<<<IMAGE_PROMPT: An overturned truck on a highway with radioactive warning signs, white dust covering injured patients on stretchers, realistic cinematic style.>>>`
-* 예시 2 (위독): `<<<IMAGE_PROMPT: A close-up of a medical monitor showing flatline Asystole, red alarm lights flashing, dark hospital atmosphere.>>>`
 
 **[Start Protocol]**
-시뮬레이션 시작 시 엑셀 데이터를 확인하고(없으면 위 기본 환자 로드), 다음과 같이 오프닝을 열어라:
+시뮬레이션 시작 시 오프닝을 열어라:
 "🚨 **상황 발생! Cs-137 운반 차량 전복 사고!**
 구급차 두 대가 도착했습니다. 환자들의 옷에 **하얀 가루(세슘 의심)**가 잔뜩 묻어있습니다!
 **(침대 1) 한가을:** 축 늘어져 있고 안색이 창백합니다. 모니터 경고음만 들립니다. (삐... 삐...)
@@ -97,32 +82,31 @@ SYSTEM_PROMPT = """
 def generate_image(prompt):
     """Imagen 모델을 사용하여 이미지를 생성합니다."""
     try:
-        # Google의 최신 이미지 생성 모델 사용
         imagen_model = genai.ImageGenerationModel("imagen-3.0-generate-001")
         result = imagen_model.generate_images(
-            prompt=prompt,
-            number_of_images=1,
-            aspect_ratio="16:9",
-            safety_filter_level="block_some",
+            prompt=prompt, number_of_images=1, aspect_ratio="16:9", safety_filter_level="block_some"
         )
         return result.images[0]
     except Exception as e:
-        # 이미지 생성 실패 시 에러 대신 경고만 로그에 남김 (중단 방지)
         print(f"이미지 생성 실패: {e}") 
         return None
 
 # ==========================================
-# 4. 화면 구성 및 사이드바
+# 4. 화면 구성 및 사이드바 (변수 선언을 최상단으로 이동)
 # ==========================================
 st.set_page_config(page_title="방사선 비상진료 시뮬레이터", page_icon="☢️", layout="wide")
 
-# 세션 상태 초기화
-if "history" not in st.session_state:
-    st.session_state.history = []
+# 세션 상태 초기화 (AttributeError 방지를 위해 단순 딕셔너리 구조 사용)
+if "chat_history" not in st.session_state:
+    # 화면 표시용 (텍스트 + 이미지 객체 혼합)
+    st.session_state.chat_history = []
+if "api_history" not in st.session_state:
+    # API 전송용 (텍스트만 포함, Gemini 형식이 아닌 순수 딕셔너리 사용 권장)
+    st.session_state.api_history = []
 if "evaluation" not in st.session_state:
     st.session_state.evaluation = None
 
-# --- 사이드바 ---
+# --- 사이드바 (NameError 방지를 위해 가장 먼저 실행) ---
 with st.sidebar:
     st.header("👤 교육생 정보")
     trainee_name = st.text_input("이름", placeholder="예: 홍길동")
@@ -131,7 +115,8 @@ with st.sidebar:
     st.markdown("---")
     st.header("📋 컨트롤 패널")
     if st.button("🔄 시뮬레이션 초기화 (Reset)"):
-        st.session_state.history = []
+        st.session_state.chat_history = []
+        st.session_state.api_history = []
         st.session_state.evaluation = None
         st.rerun()
     
@@ -141,82 +126,76 @@ with st.sidebar:
 # 5. 메인 채팅 인터페이스
 # ==========================================
 st.title("☢️ 방사선 비상진료 시뮬레이터")
-st.caption("Trauma & Radiation Response Training System | Powered by Gemini 1.5 Flash & Imagen 3")
+st.caption("Trauma & Radiation Response Training System | Powered by Gemini 1.5 Flash")
 
-# 채팅 기록 표시 (텍스트와 이미지 모두 표시)
-for message in st.session_state.history:
-    role = "user" if message.role == "user" else "assistant"
-    with st.chat_message(role):
-        # 메시지 내용이 이미지 객체인 경우와 텍스트인 경우를 구분
-        if isinstance(message.parts[0], Image.Image):
-             st.image(message.parts[0], caption="AI 현장 재현 이미지", use_column_width=True)
-        else:
-             st.write(message.parts[0].text)
+# 채팅 기록 표시 (화면용 히스토리 사용)
+for msg in st.session_state.chat_history:
+    with st.chat_message(msg["role"]):
+        if msg["type"] == "text":
+            st.write(msg["content"])
+        elif msg["type"] == "image":
+            st.image(msg["content"], caption="현장 시각화", use_column_width=True)
 
 # 사용자 입력 처리
 if st.session_state.evaluation is None:
-    if user_input := st.chat_input("명령을 입력하세요 (예: 시뮬레이션 시작, 한가을 상태 확인)"):
-        # 1. 내 메시지 표시 및 기록
+    if user_input := st.chat_input("명령을 입력하세요 (예: 시뮬레이션 시작)"):
+        # 1. 사용자 입력 표시 및 저장
         with st.chat_message("user"):
             st.write(user_input)
         
+        # 화면용 저장
+        st.session_state.chat_history.append({"role": "user", "type": "text", "content": user_input})
+        # API용 저장 (Gemini가 이해하는 형식)
+        st.session_state.api_history.append({"role": "user", "parts": [user_input]})
+        
         # 2. AI 응답 처리
         with st.chat_message("assistant"):
-            # A. 텍스트 응답 생성 (Gemini)
             with st.spinner("상황 판단 중..."):
                 try:
-                    # 텍스트 모델: 1.5-flash (안정성 및 속도 최우선)
+                    # 텍스트 모델: 1.5-flash (필수!)
                     chat_model = genai.GenerativeModel(
-                        model_name="gemini-3-flash-preview", 
+                        model_name="gemini-flash-lite-latest", 
                         system_instruction=SYSTEM_PROMPT
                     )
                     
-                    # history에는 텍스트만 전달 (이미지 객체 제외 필터링)
-                    text_only_history = [
-                        msg for msg in st.session_state.history 
-                        if not isinstance(msg.parts[0], Image.Image)
-                    ]
-                    
-                    chat = chat_model.start_chat(history=text_only_history)
+                    # API 호출 (API용 히스토리 전달)
+                    chat = chat_model.start_chat(history=st.session_state.api_history)
                     response = chat.send_message(user_input)
                     response_text = response.text
 
+                    # 이미지 태그 감지 (<<<IMAGE_PROMPT: ... >>>)
+                    image_match = re.search(r"<<<IMAGE_PROMPT:(.*?)>>>", response_text, re.DOTALL)
+                    
+                    final_text_to_display = response_text
+                    generated_image = None
+
+                    if image_match:
+                        img_prompt = image_match.group(1).strip()
+                        # 텍스트에서 태그 제거
+                        final_text_to_display = response_text.replace(image_match.group(0), "")
+                        
+                        # 이미지 생성
+                        with st.spinner("📸 현장 상황 시각화 중..."):
+                            generated_image = generate_image(img_prompt)
+
+                    # 3. 결과 출력 및 저장
+                    # (1) 텍스트
+                    if final_text_to_display.strip():
+                        st.write(final_text_to_display)
+                        # 화면용 저장
+                        st.session_state.chat_history.append({"role": "assistant", "type": "text", "content": final_text_to_display})
+                        # API용 저장
+                        st.session_state.api_history.append({"role": "model", "parts": [final_text_to_display]})
+                    
+                    # (2) 이미지 (이미지가 있을 경우만)
+                    if generated_image:
+                        st.image(generated_image, caption="AI 현장 재현 이미지", use_column_width=True)
+                        # 화면용 저장 (이미지 객체)
+                        st.session_state.chat_history.append({"role": "assistant", "type": "image", "content": generated_image})
+                        # API용 저장에는 이미지를 넣지 않음 (무료 버전 한계)
+
                 except Exception as e:
                     st.error(f"오류 발생 (잠시 후 다시 시도하세요): {e}")
-                    st.stop()
-
-            # B. 이미지 태그 감지 및 이미지 생성 (Imagen)
-            # 정규표현식으로 <<<IMAGE_PROMPT: ... >>> 패턴 찾기
-            image_match = re.search(r"<<<IMAGE_PROMPT:(.*?)>>>", response_text, re.DOTALL)
-            
-            final_text_to_display = response_text
-            generated_image = None
-
-            if image_match:
-                img_prompt = image_match.group(1).strip() # 태그 안의 프롬프트 추출
-                
-                # 텍스트에서 태그 부분은 제거해서 깔끔하게 만듦
-                final_text_to_display = response_text.replace(image_match.group(0), "")
-                
-                # 이미지 생성 시작
-                with st.spinner("📸 현장 상황 시각화 중..."):
-                    generated_image = generate_image(img_prompt)
-
-            # C. 결과 출력 및 기록 저장
-            # 1) 텍스트 출력 및 저장
-            if final_text_to_display.strip():
-                st.write(final_text_to_display)
-                st.session_state.history.append(
-                    genai.types.Content(role="model", parts=[genai.types.Part(text=final_text_to_display)])
-                )
-            
-            # 2) 이미지가 있다면 출력 및 저장
-            if generated_image:
-                st.image(generated_image, caption="AI 현장 재현 이미지", use_column_width=True)
-                # 이미지 객체를 히스토리에 특별한 형태로 저장
-                st.session_state.history.append(
-                   genai.types.Content(role="model", parts=[generated_image])
-                )
 
 # ==========================================
 # 6. 평가 및 데이터 제출
@@ -226,23 +205,19 @@ if st.session_state.evaluation is None:
     st.subheader("📊 훈련 종료 및 평가")
     
     if st.button("훈련 종료 및 평가 받기"):
+        # NameError 해결: 변수가 상단에서 선언되었으므로 안전함
         if not trainee_name or not trainee_id:
             st.warning("⚠️ 왼쪽 사이드바에서 '이름'과 '소속'을 먼저 입력해주세요!")
         else:
-            # 텍스트 메시지만 골라내서 평가 (이미지 제외)
-            text_msgs = [msg for msg in st.session_state.history if not isinstance(msg.parts[0], Image.Image)]
-            
-            if len(text_msgs) < 2:
+            if len(st.session_state.api_history) < 2:
                 st.warning("⚠️ 대화 기록이 너무 짧습니다. 훈련을 진행한 후 종료해주세요.")
             else:
                 with st.spinner("AI가 훈련 내용을 분석하여 채점 중입니다..."):
                     try:
-                        eval_model = genai.GenerativeModel("gemini-3-flash-preview")
+                        eval_model = genai.GenerativeModel("gemini-flash-lite-latest")
                         
-                        full_log = "\n".join([
-                            f"{msg.role}: {msg.parts[0].text}" 
-                            for msg in text_msgs
-                        ])
+                        # API 히스토리를 텍스트로 변환
+                        full_log = "\n".join([f"{msg['role']}: {msg['parts'][0]}" for msg in st.session_state.api_history])
                         
                         eval_prompt = f"""
                         너는 방사선 비상진료 평가관이다. 아래 시뮬레이션 로그를 분석해라.
@@ -268,12 +243,7 @@ if st.session_state.evaluation:
     st.success("✅ 평가 완료!")
     st.info(st.session_state.evaluation)
     
-    # CSV 저장을 위해 텍스트 로그만 다시 추출
-    full_conversation = "\n".join([
-        f"[{msg.role}] {msg.parts[0].text}" 
-        for msg in st.session_state.history 
-        if not isinstance(msg.parts[0], Image.Image)
-    ])
+    full_conversation = "\n".join([f"[{msg['role']}] {msg['parts'][0]}" for msg in st.session_state.api_history])
     
     data = {
         "이름": [trainee_name],
