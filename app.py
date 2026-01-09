@@ -117,7 +117,7 @@ User: "옷 벗기고 제염해"
 def get_ai_response(messages):
     # 시스템 프롬프트를 설정에 포함시켜 모델을 불러옵니다.
     model = genai.GenerativeModel(
-        model_name="gemini-flash-latest", # 또는 gemini-3.0-flash
+        model_name="gemini-2.0-flash-lite", # 또는 gemini-3.0-flash
         system_instruction=SYSTEM_PROMPT
     )
     
@@ -163,7 +163,7 @@ if user_input := st.chat_input("명령을 입력하세요 (예: 환자 상태 �
             try:
                 # 모델 생성 및 채팅 연결 (히스토리 유지)
                 model = genai.GenerativeModel(
-                    model_name="gemini-flash-latest",
+                    model_name="gemini-2.0-flash-lite",
                     system_instruction=SYSTEM_PROMPT
                 )
                 chat = model.start_chat(history=st.session_state.history)
@@ -195,6 +195,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.info("**[가이드]**\n\n1. `시작` 입력하여 시나리오 로딩\n2. V/S 확인 및 처치 명령\n3. 오염 계측 명령")
+
 
 
 
