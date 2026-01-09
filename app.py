@@ -130,74 +130,111 @@ def get_ai_response(messages):
     return response.text
 
 # ==========================================
-# 4. 웹사이트 화면 구성 (Streamlit)
+# 4. 웹사이트 화면 구성
 # ==========================================
-st.set_page_config(page_title="방사선 비상진료 시뮬레이터", page_icon="☢️")
-
 st.title("☢️ 방사선 비상진료 시뮬레이터")
-st.caption("Trauma & Radiation Response Training System | Powered by Gemini")
 
-# 세션 상태 초기화 (대화 기록 저장소)
+# 세션 상태 초기화
 if "history" not in st.session_state:
     st.session_state.history = []
-if "last_input" not in st.session_state:
-    st.session_state.last_input = ""
+if "evaluation" not in st.session_state:
+    st.session_state.evaluation = None
 
-# 1. 채팅 기록 화면에 표시
+# --- 채팅 기록 표시 ---
 for message in st.session_state.history:
     role = "user" if message.role == "user" else "assistant"
     with st.chat_message(role):
         st.write(message.parts[0].text)
 
-# 2. 사용자 입력 처리
-if user_input := st.chat_input("명령을 입력하세요 (예: 환자 상태 확인, 산소 투여)"):
-    # 화면에 내 말 표시
-    with st.chat_message("user"):
-        st.write(user_input)
-    
-    # 로직 처리를 위해 변수에 저장
-    st.session_state.last_input = user_input
-
-    # 3. AI 응답 생성 (로딩 표시)
-    with st.chat_message("assistant"):
-        with st.spinner("환자 반응 관찰 중..."):
-            try:
-                # 모델 생성 및 채팅 연결 (히스토리 유지)
-                model = genai.GenerativeModel(
-                    model_name="gemini-flash-lite-latest",
-                    system_instruction=SYSTEM_PROMPT
-                )
-                chat = model.start_chat(history=st.session_state.history)
-                
-                # 메시지 전송
-                response = chat.send_message(user_input)
-                
-                # 결과 출력
-                st.write(response.text)
-                
-                # 대화 기록 업데이트 (Streamlit 세션 상태에 저장)
-                st.session_state.history = chat.history
-                
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+# --- 사용자 입력 처리 ---
+# 평가가 완료되지 않았을 때만 입력 가능
+if st.session_state.evaluation is None:
+    if user_input := st.chat_input("처치 명령을 입력하세요"):
+        with st.chat_message("user"):
+            st.write(user_input)
+        
+        with st.chat_message("assistant"):
+            with st.spinner("환자 반응 관찰 중..."):
+                try:
+                    model = genai.GenerativeModel(
+                        model_name="gemini-flash-lite-latest", # 교육용 추천 모델
+                        system_instruction=SYSTEM_PROMPT
+                    )
+                    chat = model.start_chat(history=st.session_state.history)
+                    response = chat.send_message(user_input)
+                    st.write(response.text)
+                    st.session_state.history = chat.history
+                except Exception as e:
+                    st.error(f"오류 발생: {e}")
 
 # ==========================================
-# 5. 사이드바 (리셋 버튼)
+# 6. 결과 저장 및 평가 시스템 (핵심 기능 ⭐)
 # ==========================================
-with st.sidebar:
-    st.header("📋 컨트롤 패널")
-    st.markdown("시나리오를 랜덤으로 다시 시작합니다.")
+st.markdown("---")
+st.subheader("📊 훈련 종료 및 데이터 제출")
+
+if st.button("훈련 종료 및 평가 받기"):
+    if not trainee_name or not trainee_id:
+        st.warning("⚠️ 사이드바에서 '이름'과 '소속'을 먼저 입력해주세요.")
+    elif len(st.session_state.history) < 2:
+        st.warning("⚠️ 대화 기록이 너무 짧습니다. 훈련을 진행한 후 종료해주세요.")
+    else:
+        with st.spinner("AI가 훈련 내용을 분석하여 채점 중입니다..."):
+            # 1. AI에게 평가 요청 (숨겨진 프롬프트)
+            eval_model = genai.GenerativeModel("gemini-flash-lite-latest")
+            
+            # 대화 기록을 텍스트로 변환
+            full_log = "\n".join([f"{msg.role}: {msg.parts[0].text}" for msg in st.session_state.history])
+            
+            eval_prompt = f"""
+            너는 방사선 비상진료 평가관이다. 아래 시뮬레이션 로그를 분석해라.
+            
+            [로그 시작]
+            {full_log}
+            [로그 끝]
+            
+            다음 형식으로 평가 리포트를 작성해줘:
+            1. 환자 생존 여부: (생존/사망)
+            2. 주요 처치 내용: (핵심 처치 3가지 요약)
+            3. 잘한 점:
+            4. 개선할 점:
+            5. 종합 점수: (100점 만점 기준 숫자만)
+            """
+            
+            eval_response = eval_model.generate_content(eval_prompt)
+            st.session_state.evaluation = eval_response.text
+            
+            st.success("평가가 완료되었습니다! 아래 내용을 확인하고 CSV를 다운로드하세요.")
+            st.rerun()
+
+# 평가 결과가 있으면 화면에 보여주고 다운로드 버튼 활성화
+if st.session_state.evaluation:
+    st.info("📝 평가 결과 리포트")
+    st.markdown(st.session_state.evaluation)
     
-    if st.button("🔄 시뮬레이션 초기화 (Reset)"):
-        st.session_state.history = []
-        st.session_state.last_input = ""
-        st.rerun()
+    # 2. 데이터 CSV 만들기
+    # 대화 전문 저장
+    full_conversation = "\n".join([f"[{msg.role}] {msg.parts[0].text}" for msg in st.session_state.history])
     
-    st.markdown("---")
-
-    st.info("**[가이드]**\n\n1. `시작` 입력하여 시나리오 로딩\n2. V/S 확인 및 처치 명령\n3. 오염 계측 명령")
-
-
+    # 데이터프레임 생성
+    data = {
+        "이름": [trainee_name],
+        "소속": [trainee_id],
+        "날짜": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+        "평가결과": [st.session_state.evaluation],
+        "대화로그": [full_conversation]
+    }
+    df = pd.DataFrame(data)
+    
+    # CSV 변환
+    csv = df.to_csv(index=False).encode('utf-8-sig') # 한글 깨짐 방지
+    
+    st.download_button(
+        label="📥 훈련 데이터 다운로드 (CSV)",
+        data=csv,
+        file_name=f"훈련결과_{trainee_name}_{datetime.now().strftime('%H%M')}.csv",
+        mime="text/csv"
+    )
 
 
 
