@@ -91,7 +91,7 @@ SYSTEM_PROMPT = """
 위급 환자에게 산소, 수액, 아트로핀 등을 우선 투여하면 V/S 수치를 소폭 상승시켜라. (예: HR 30 -> 45)
 
 [Output Style: 리얼리즘]
-AI의 말투를 쓰지 말고, 현장의 소리와 모니터 수치만 건조하게 보여줘라.
+AI의 말투를 쓰지 말고, 현장의 소리와 모니터 수치만 건조하게 보여주고 환자의 반응도 실제처럼 보여줘라.
 
 (예시 - 실수했을 때)
 User: "옷 벗기고 제염해"
@@ -106,6 +106,7 @@ User: "옷 벗기고 제염해"
 구급차 두 대가 도착했습니다. 환자들의 옷에 **하얀 가루(세슘 의심)**가 잔뜩 묻어있습니다!
 
 (침대 1) 한가을:축 늘어져 있고 안색이 창백합니다. 모니터 경고음만 들립니다. (삐... 삐...)
+
 (침대 2) 최여름:피투성이가 된 다리를 붙잡고 비명을 지릅니다. '아악! 나부터 살려줘요!!'
 
 팀장님, 누구부터 진료하시겠습니까? (이름을 호명해주세요)"
@@ -117,7 +118,7 @@ User: "옷 벗기고 제염해"
 def get_ai_response(messages):
     # 시스템 프롬프트를 설정에 포함시켜 모델을 불러옵니다.
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-lite", # 또는 gemini-3.0-flash
+        model_name="gemini-flash-lite-latest", # 또는 gemini-3.0-flash
         system_instruction=SYSTEM_PROMPT
     )
     
@@ -163,7 +164,7 @@ if user_input := st.chat_input("명령을 입력하세요 (예: 환자 상태 �
             try:
                 # 모델 생성 및 채팅 연결 (히스토리 유지)
                 model = genai.GenerativeModel(
-                    model_name="gemini-2.0-flash-lite",
+                    model_name="gemini-flash-lite-latest",
                     system_instruction=SYSTEM_PROMPT
                 )
                 chat = model.start_chat(history=st.session_state.history)
@@ -195,6 +196,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.info("**[가이드]**\n\n1. `시작` 입력하여 시나리오 로딩\n2. V/S 확인 및 처치 명령\n3. 오염 계측 명령")
+
 
 
 
